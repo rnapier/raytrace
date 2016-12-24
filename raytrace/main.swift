@@ -89,15 +89,18 @@ struct Ray {
         return origin + t * direction
     }
 
-    func intersectsSphere(at center: Point, radius: Float) -> Bool {
+    func intersectionWithSphere(at center: Point, radius: Float) -> Float? {
         let oc = origin - center
         let a = direction ⋅ direction
         let b = 2.0 * oc ⋅ direction
         let c = oc ⋅ oc - radius * radius
         let discriminant = b * b - 4 * a * c
-        return discriminant > 0
+        if (discriminant < 0) {
+            return nil
+        } else {
+            return (-b - sqrt(discriminant)) / (2.0*a)
+        }
     }
-
 }
 
 struct Color: VectorConvertible {
@@ -115,8 +118,9 @@ struct Color: VectorConvertible {
 
 extension Color {
     init(ray: Ray) {
-        if ray.intersectsSphere(at: Point(x: 0, y: 0, z: -1), radius: 0.5) {
-            self = Color(r: 1, g: 0, b: 0)
+        if let t = ray.intersectionWithSphere(at: Point(x: 0, y: 0, z: -1), radius: 0.5) {
+            let N = (ray.point(atParameter: t) - Point(x: 0, y: 0, z: -1)).unit
+            self = 0.5 * Color(r: N.a + 1, g: N.b + 1, b: N.c + 1)
         } else {
             let unitDirection = ray.direction.unit
             let t = 0.5 * unitDirection.b + 1
@@ -124,7 +128,6 @@ extension Color {
         }
     }
 }
-
 
 let nx = 200
 let ny = 100
