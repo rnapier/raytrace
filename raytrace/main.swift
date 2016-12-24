@@ -8,6 +8,8 @@
 
 import Darwin
 
+infix operator ⋅ : MultiplicationPrecedence
+
 protocol VectorConvertible {
     init(vector: Vector)
     var vector: Vector { get }
@@ -52,6 +54,9 @@ struct Vector: VectorConvertible {
     static func -(lhs: Vector, rhs: Vector) -> Vector {
         return Vector(lhs.a - rhs.a, lhs.b - rhs.b, lhs.c - rhs.c)
     }
+    static func ⋅(lhs: Vector, rhs: Vector) -> Float {
+        return lhs.a * rhs.a + lhs.b * rhs.b + lhs.c * rhs.c
+    }
 }
 
 struct Point: VectorConvertible {
@@ -83,6 +88,16 @@ struct Ray {
     func point(atParameter t: Float) -> Point {
         return origin + t * direction
     }
+
+    func intersectsSphere(at center: Point, radius: Float) -> Bool {
+        let oc = origin - center
+        let a = direction ⋅ direction
+        let b = 2.0 * oc ⋅ direction
+        let c = oc ⋅ oc - radius * radius
+        let discriminant = b * b - 4 * a * c
+        return discriminant > 0
+    }
+
 }
 
 struct Color: VectorConvertible {
@@ -100,11 +115,16 @@ struct Color: VectorConvertible {
 
 extension Color {
     init(ray: Ray) {
-        let unitDirection = ray.direction.unit
-        let t = 0.5 * unitDirection.b + 1
-        self = Color(r: 1, g: 1, b: 1).lerp(to: Color(r: 0.5, g: 0.7, b: 1), at: t)
+        if ray.intersectsSphere(at: Point(x: 0, y: 0, z: -1), radius: 0.5) {
+            self = Color(r: 1, g: 0, b: 0)
+        } else {
+            let unitDirection = ray.direction.unit
+            let t = 0.5 * unitDirection.b + 1
+            self = Color(r: 1, g: 1, b: 1).lerp(to: Color(r: 0.5, g: 0.7, b: 1), at: t)
+        }
     }
 }
+
 
 let nx = 200
 let ny = 100
