@@ -25,6 +25,9 @@ public:
         return sqrt(e[0]*e[0] + e[1]*e[1] + e[2]*e[2]);
     }
 
+    inline float squared_length() const {
+        return e[0]*e[0] + e[1]*e[1] + e[2]*e[2];
+    }
     float e[3];
 };
 
