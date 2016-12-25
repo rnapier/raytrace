@@ -106,11 +106,11 @@ struct Color: VectorConvertible {
 extension Color {
     init(ray: Ray, world: Hittable) {
         if let hit = world.hitLocation(for: ray, in: 0...MAXFLOAT) {
-            let N = (ray.point(atParameter: hit.t) - Point(x: 0, y: 0, z: -1)).unit
+            let N = hit.normal // (ray.point(atParameter: hit.t) - Point(x: 0, y: 0, z: -1)).unit
             self = 0.5 * Color(r: N.a + 1, g: N.b + 1, b: N.c + 1)
         } else {
             let unitDirection = ray.direction.unit
-            let t = 0.5 * unitDirection.b + 1
+            let t = 0.5 * (unitDirection.b + 1)
             self = Color(r: 1, g: 1, b: 1).lerp(to: Color(r: 0.5, g: 0.7, b: 1), at: t)
         }
     }
@@ -143,7 +143,6 @@ struct Sphere: Hittable {
 
         let oc = ray.origin - center
         let a = ray.direction ⋅ ray.direction
-        NSLog("%.2f %.2f %.2f %.2f %.2f", ray.direction.a, ray.direction.b, ray.direction.c, a, ray.direction.length);
         let b = oc ⋅ ray.direction
         let c = oc ⋅ oc - radius * radius
         let discriminant = b * b - a * c

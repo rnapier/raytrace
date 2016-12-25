@@ -16,10 +16,6 @@ bool sphere::hit(const ray& r, float t_min, float t_max, hit_record& rec) const 
     vec3 oc = r.origin() - center;
 
     float a = dot(r.direction(), r.direction());
-    std::cerr << r.B[0] << " " << r.B[1] << " " << r.B[2] << " " << a << " " <<
-    (r.B[0] * r.B[0]) + (r.B[1] * r.B[1]) << (r.B[2] * r.B[2]) << " "
-    << r.direction().length() <<
-    std::endl;
     float b = dot(oc, r.direction());
     float c = dot(oc, oc) - radius*radius;
     float discriminant = b*b - a*c;
