@@ -126,7 +126,6 @@ protocol Hittable {
     func hitLocation(for ray: Ray, in: ClosedRange<Float>) -> HitLocation?
 }
 
-
 struct Sphere: Hittable {
     let center: Point
     let radius: Float
@@ -170,28 +169,44 @@ struct HittableArray: Hittable {
     }
 }
 
+struct Camera {
+    let lowerLeftCorner = Point(x: -2, y: -1, z: -1)
+    let horizontal = Vector(4, 0, 0)
+    let vertical = Vector(0, 2, 0)
+    let origin = Point.zero
+
+    func ray(atPlaneX x: Float, planeY y: Float) -> Ray {
+        return Ray(origin: origin, through: lowerLeftCorner + x * horizontal + y * vertical)
+    }
+}
+
 let nx = 200
 let ny = 100
+let ns = 100
+
 print("P3\n\(nx) \(ny)\n255")
 
-let lowerLeftCorner = Point(x: -2, y: -1, z: -1)
-let horizontal = Vector(4, 0, 0)
-let vertical = Vector(0, 2, 0)
-let origin = Point.zero
 
 let world = HittableArray([
     Sphere(center: Point(x: 0, y: 0, z: -1), radius: 0.5),
     Sphere(center: Point(x: 0, y: -100.5, z: -1), radius: 100),
 ])
 
+let camera = Camera()
+
+func randomFloat() -> Float {
+    return Float(drand48()) // / Float(UInt32.max))
+}
+
 for j in (0..<ny).reversed() {
     for i in 0..<nx {
+        let col = Color(vector: (0..<ns).reduce(Vector.zero) { (c, _) in
+            let u = (Float(i) + randomFloat()) / Float(nx)
+            let v = (Float(j) + randomFloat()) / Float(ny)
 
-        let u = Float(i) / Float(nx)
-        let v = Float(j) / Float(ny)
-
-        let r = Ray(origin: origin, through: lowerLeftCorner + u * horizontal + v * vertical)
-        let col = Color(ray: r, world: world)
+            let r = camera.ray(atPlaneX: u, planeY: v)
+            return c + Color(ray: r, world: world).vector
+        } / Float(ns))
 
         let ir = Int(255.99 * col.r)
         let ig = Int(255.99 * col.g)
