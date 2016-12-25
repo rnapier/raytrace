@@ -103,15 +103,15 @@ struct Color: VectorConvertible {
     var b: Float { return vector.c }
 }
 
-extension Color {
-    init(ray: Ray, world: Hittable) {
-        if let hit = world.hitLocation(for: ray, in: 0...MAXFLOAT) {
+extension Ray {
+    func color<World: Hittable>(in world: World) -> Color {
+        if let hit = world.hitLocation(for: self, in: 0...(.infinity)) {
             let N = hit.normal
-            self = 0.5 * Color(r: N.a + 1, g: N.b + 1, b: N.c + 1)
+            return 0.5 * Color(r: N.a + 1, g: N.b + 1, b: N.c + 1)
         } else {
-            let unitDirection = ray.direction.unit
+            let unitDirection = direction.unit
             let t = 0.5 * (unitDirection.b + 1)
-            self = Color(r: 1, g: 1, b: 1).lerp(to: Color(r: 0.5, g: 0.7, b: 1), at: t)
+            return Color(r: 1, g: 1, b: 1).lerp(to: Color(r: 0.5, g: 0.7, b: 1), at: t)
         }
     }
 }
@@ -205,7 +205,7 @@ for j in (0..<ny).reversed() {
             let v = (Float(j) + randomFloat()) / Float(ny)
 
             let r = camera.ray(atPlaneX: u, planeY: v)
-            return c + Color(ray: r, world: world).vector
+            return c + r.color(in: world).vector
         } / Float(ns))
 
         let ir = Int(255.99 * col.r)
