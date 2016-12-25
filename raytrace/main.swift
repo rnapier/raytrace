@@ -88,19 +88,6 @@ struct Ray {
     func point(atParameter t: Float) -> Point {
         return origin + t * direction
     }
-
-    func intersectionWithSphere(at center: Point, radius: Float) -> Float? {
-        let oc = origin - center
-        let a = direction ⋅ direction
-        let b = 2.0 * oc ⋅ direction
-        let c = oc ⋅ oc - radius * radius
-        let discriminant = b * b - 4 * a * c
-        if (discriminant < 0) {
-            return nil
-        } else {
-            return (-b - sqrt(discriminant)) / (2.0*a)
-        }
-    }
 }
 
 struct Color: VectorConvertible {
@@ -117,14 +104,69 @@ struct Color: VectorConvertible {
 }
 
 extension Color {
-    init(ray: Ray) {
-        if let t = ray.intersectionWithSphere(at: Point(x: 0, y: 0, z: -1), radius: 0.5) {
-            let N = (ray.point(atParameter: t) - Point(x: 0, y: 0, z: -1)).unit
+    init(ray: Ray, world: Hittable) {
+        if let hit = world.hitLocation(for: ray, in: 0...MAXFLOAT) {
+            let N = (ray.point(atParameter: hit.t) - Point(x: 0, y: 0, z: -1)).unit
             self = 0.5 * Color(r: N.a + 1, g: N.b + 1, b: N.c + 1)
         } else {
             let unitDirection = ray.direction.unit
             let t = 0.5 * unitDirection.b + 1
             self = Color(r: 1, g: 1, b: 1).lerp(to: Color(r: 0.5, g: 0.7, b: 1), at: t)
+        }
+    }
+}
+
+struct HitLocation {
+    let t: Float
+    let p: Point
+    let normal: Vector
+}
+
+protocol Hittable {
+    func hitLocation(for ray: Ray, in: ClosedRange<Float>) -> HitLocation?
+}
+import Foundation
+
+struct Sphere: Hittable {
+    let center: Point
+    let radius: Float
+
+    func hitLocation(for ray: Ray, in range: ClosedRange<Float>) -> HitLocation? {
+
+        func hitLocation(for t: Float) -> HitLocation? {
+            guard range.contains(t) else { return nil }
+            let point = ray.point(atParameter: t)
+            return HitLocation(t: t,
+                               p: point,
+                               normal: (point - center) / radius)
+        }
+
+        let oc = ray.origin - center
+        let a = ray.direction ⋅ ray.direction
+        NSLog("%.2f %.2f %.2f %.2f %.2f", ray.direction.a, ray.direction.b, ray.direction.c, a, ray.direction.length);
+        let b = oc ⋅ ray.direction
+        let c = oc ⋅ oc - radius * radius
+        let discriminant = b * b - a * c
+
+        if discriminant > 0 {
+            let s = sqrt(b*b-a*c)
+            return hitLocation(for: (-b - s)/a) ?? hitLocation(for: (-b + s)/a)
+        }
+
+        return nil
+    }
+}
+
+struct HittableArray: Hittable {
+    let elements: [Hittable]
+
+    init(_ elements: [Hittable]) { self.elements = elements }
+
+    func hitLocation(for ray: Ray, in range: ClosedRange<Float>) -> HitLocation? {
+        return elements.reduce(nil) { (previousHit, hittable) in
+            let maxT = previousHit?.t ?? range.upperBound
+            let hit = hittable.hitLocation(for: ray, in: range.lowerBound...maxT)
+            return hit ?? previousHit
         }
     }
 }
@@ -138,6 +180,11 @@ let horizontal = Vector(4, 0, 0)
 let vertical = Vector(0, 2, 0)
 let origin = Point.zero
 
+let world = HittableArray([
+    Sphere(center: Point(x: 0, y: 0, z: -1), radius: 0.5),
+    Sphere(center: Point(x: 0, y: -100.5, z: -1), radius: 100),
+])
+
 for j in (0..<ny).reversed() {
     for i in 0..<nx {
 
@@ -145,7 +192,7 @@ for j in (0..<ny).reversed() {
         let v = Float(j) / Float(ny)
 
         let r = Ray(origin: origin, through: lowerLeftCorner + u * horizontal + v * vertical)
-        let col = Color(ray: r)
+        let col = Color(ray: r, world: world)
 
         let ir = Int(255.99 * col.r)
         let ig = Int(255.99 * col.g)
