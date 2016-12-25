@@ -106,7 +106,7 @@ struct Color: VectorConvertible {
 extension Color {
     init(ray: Ray, world: Hittable) {
         if let hit = world.hitLocation(for: ray, in: 0...MAXFLOAT) {
-            let N = hit.normal // (ray.point(atParameter: hit.t) - Point(x: 0, y: 0, z: -1)).unit
+            let N = hit.normal
             self = 0.5 * Color(r: N.a + 1, g: N.b + 1, b: N.c + 1)
         } else {
             let unitDirection = ray.direction.unit
@@ -125,7 +125,7 @@ struct HitLocation {
 protocol Hittable {
     func hitLocation(for ray: Ray, in: ClosedRange<Float>) -> HitLocation?
 }
-import Foundation
+
 
 struct Sphere: Hittable {
     let center: Point

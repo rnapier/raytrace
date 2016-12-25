@@ -18,6 +18,9 @@ public:
 
     inline float operator[](int i) const { return e[i]; }
 
+    inline vec3& operator+=(const vec3 &v);
+    inline vec3& operator/=(const float t);
+
     inline float length() const {
         return sqrt(e[0]*e[0] + e[1]*e[1] + e[2]*e[2]);
     }
@@ -39,6 +42,20 @@ inline vec3 operator*(float t, const vec3 &v) {
 
 inline vec3 operator/(const vec3 &v, float t) {
     return vec3(v.e[0]/t, v.e[1]/t, v.e[2]/t);
+}
+
+inline vec3& vec3::operator+=(const vec3 &v) {
+    e[0] += v.e[0];
+    e[1] += v.e[1];
+    e[2] += v.e[2];
+    return *this;
+}
+
+inline vec3& vec3::operator/=(const float t) {
+    e[0] /= t;
+    e[1] /= t;
+    e[2] /= t;
+    return *this;
 }
 
 inline float dot(const vec3 &v1, const vec3 &v2) {
