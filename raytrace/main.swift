@@ -28,7 +28,6 @@ func randomDouble() -> Double {
     return drand48()
 }
 
-
 struct Vector {
     static var zero: Vector { return Vector(0, 0, 0) }
     static func *(scalar: Double, rhs: Vector) -> Vector {
@@ -78,7 +77,6 @@ struct Vector {
         } while true
     }
 }
-
 
 extension Vector: CustomStringConvertible {
     var description: String {
