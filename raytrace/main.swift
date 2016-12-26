@@ -24,10 +24,6 @@ func errPrint(_ items: Any..., separator: String = " ", terminator: String = "\n
 
 infix operator ⋅ : MultiplicationPrecedence
 
-func randomDouble() -> Double {
-    return drand48()
-}
-
 struct Vector {
     static var zero: Vector { return Vector(0, 0, 0) }
     static func *(scalar: Double, rhs: Vector) -> Vector {
@@ -42,7 +38,7 @@ struct Vector {
         return (1.0 - t) * self + t * to
     }
 
-    let x, y, z: Double
+    var x, y, z: Double
     init(_ x: Double, _ y: Double, _ z: Double) {
         self.x = x
         self.y = y
@@ -60,21 +56,32 @@ struct Vector {
     var unit: Vector {
         return self / length
     }
+
+
     static func +(lhs: Vector, rhs: Vector) -> Vector {
         return Vector(lhs.x + rhs.x, lhs.y + rhs.y, lhs.z + rhs.z)
     }
     static func -(lhs: Vector, rhs: Vector) -> Vector {
         return Vector(lhs.x - rhs.x, lhs.y - rhs.y, lhs.z - rhs.z)
     }
+
+    static func *(lhs: Vector, rhs: Vector) -> Vector {
+        return Vector(lhs.x * rhs.x, lhs.y * rhs.y, lhs.z * rhs.z)
+    }
+
     static func ⋅(lhs: Vector, rhs: Vector) -> Double {
         return lhs.x * rhs.x + lhs.y * rhs.y + lhs.z * rhs.z
     }
 
     static func randomInUnitSphere() -> Vector {
         repeat {
-            let p = 2.0*Vector(randomDouble(), randomDouble(), randomDouble()) - Vector(1,1,1)
+            let p = 2.0*Vector(drand48(), drand48(), drand48()) - Vector(1,1,1)
             if p.lengthSquared < 1 { return p }
         } while true
+    }
+
+    func reflect(acrossNormal n: Vector) -> Vector {
+        return self - 2*self⋅n*n
     }
 }
 
@@ -112,13 +119,15 @@ extension Vector {
     var b: Double { return z }
 }
 
-var totalHits = 0
 extension Ray {
-    func color<World: Hittable>(in world: World) -> Vector {
-        if let hit = world.hitLocation(for: self, in: (0.001)..<(.infinity)) {
-            totalHits += 1
-            let target = hit.p + hit.normal + .randomInUnitSphere()
-            return 0.5 * Ray(origin: hit.p, direction: target - hit.p).color(in: world)
+    func color<World: Hittable>(in world: World, depth: Int = 0) -> Vector {
+        if let rec = world.hitRecord(for: self, in: (0.001)..<(Double(MAXFLOAT))) {
+            if depth < 50,
+                let scatterResult = rec.material.scatter(ray: self, hitRecord: rec) {
+                return scatterResult.attenuation * scatterResult.scattered.color(in: world, depth: depth + 1)
+            } else {
+                return Vector.zero
+            }
         } else {
             let unitDirection = direction.unit
             let t = 0.5 * (unitDirection.y + 1)
@@ -127,29 +136,32 @@ extension Ray {
     }
 }
 
-struct HitLocation {
+struct HitRecord {
     var t: Double
     var p: Vector
     var normal: Vector
+    var material: Material
 }
 
 protocol Hittable {
-    func hitLocation(for ray: Ray, in: Range<Double>) -> HitLocation?
+    func hitRecord(for ray: Ray, in: Range<Double>) -> HitRecord?
 }
 
 struct Sphere: Hittable {
     let center: Vector
     let radius: Double
+    let material: Material
 
-    func hitLocation(for ray: Ray, in range: Range<Double>) -> HitLocation? {
+    func hitRecord(for ray: Ray, in range: Range<Double>) -> HitRecord? {
 
-        func hitLocation(for t: Double) -> HitLocation? {
+        func hitRecord(for t: Double) -> HitRecord? {
             // Do not include ends of range
             guard t > range.lowerBound && t < range.upperBound else { return nil }
             let point = ray.point(atParameter: t)
-            return HitLocation(t: t,
-                               p: point,
-                               normal: (point - center) / radius)
+            return HitRecord(t: t,
+                             p: point,
+                             normal: (point - center) / radius,
+                             material: material)
         }
 
         let oc = ray.origin - center
@@ -160,7 +172,7 @@ struct Sphere: Hittable {
 
         if discriminant > 0 {
             let s = sqrt(discriminant)
-            return hitLocation(for: (-b - s)/a) ?? hitLocation(for: (-b + s)/a)
+            return hitRecord(for: (-b - s)/a) ?? hitRecord(for: (-b + s)/a)
         }
 
         return nil
@@ -172,10 +184,10 @@ struct HittableArray: Hittable {
 
     init(_ elements: [Hittable]) { self.elements = elements }
 
-    func hitLocation(for ray: Ray, in range: Range<Double>) -> HitLocation? {
+    func hitRecord(for ray: Ray, in range: Range<Double>) -> HitRecord? {
         return elements.reduce(nil) { (previousHit, hittable) in
             let maxT = previousHit?.t ?? range.upperBound
-            let hit = hittable.hitLocation(for: ray, in: range.lowerBound..<maxT)
+            let hit = hittable.hitRecord(for: ray, in: range.lowerBound..<maxT)
             return hit ?? previousHit
         }
     }
@@ -192,6 +204,35 @@ struct Camera {
     }
 }
 
+struct ScatterResult {
+    let scattered: Ray
+    let attenuation: Vector
+}
+
+protocol Material {
+    func scatter(ray: Ray, hitRecord: HitRecord) -> ScatterResult?
+}
+
+struct Lambertian: Material {
+    let albedo: Vector
+    func scatter(ray: Ray, hitRecord rec: HitRecord) -> ScatterResult? {
+        let target = rec.p + rec.normal + Vector.randomInUnitSphere()
+        return ScatterResult(scattered: Ray(origin: rec.p, direction: target - rec.p),
+                             attenuation: albedo)
+    }
+}
+
+struct Metal: Material {
+    let albedo: Vector
+    func scatter(ray: Ray, hitRecord rec: HitRecord) -> ScatterResult? {
+        let reflected = ray.direction.unit.reflect(acrossNormal: rec.normal)
+        let scattered = Ray(origin: rec.p, direction: reflected)
+        guard scattered.direction ⋅ rec.normal > 0 else { return nil }
+
+        return ScatterResult(scattered: scattered, attenuation: albedo)
+    }
+}
+
 srand48(0)
 
 let nx = 200
@@ -201,22 +242,24 @@ let ns = 100
 print("P3\n\(nx) \(ny)\n255")
 
 let world = HittableArray([
-    Sphere(center: Vector(0, 0, -1), radius: 0.5),
-    Sphere(center: Vector(0, -100.5, -1), radius: 100),
-])
+    Sphere(center: Vector(0, 0, -1), radius: 0.5, material: Lambertian(albedo: Vector(0.8, 0.3, 0.3))),
+    Sphere(center: Vector(0, -100.5, -1), radius: 100, material: Lambertian(albedo: Vector(0.8, 0.8, 0.0))),
+    Sphere(center: Vector(1,0,-1), radius: 0.5, material: Metal(albedo: Vector(0.8,0.6,0.2))),
+    Sphere(center: Vector(-1,0,-1), radius: 0.5, material: Metal(albedo: Vector(0.8,0.8,0.8))),
+    ])
 
 let camera = Camera()
 
 for j in (0..<ny).reversed() {
     for i in 0..<nx {
-        let col = (0..<ns).reduce(Vector.zero) { (c, s) in
-            let u = (Double(i) + randomDouble()) / Double(nx)
-            let v = (Double(j) + randomDouble()) / Double(ny)
-
+        var col = (0..<ns).reduce(Vector.zero) { (c, s) in
+            let u = (Double(i) + drand48()) / Double(nx)
+            let v = (Double(j) + drand48()) / Double(ny)
             let r = camera.ray(atPlaneX: u, planeY: v)
-
             return c + r.color(in: world)
-        } / Double(ns)
+            }
+        col = col / Double(ns)
+        col = Vector(sqrt(col.x), sqrt(col.y), sqrt(col.z))
 
         let ir = Int(255.99 * col.r)
         let ig = Int(255.99 * col.g)
