@@ -22,12 +22,15 @@ public:
     inline vec3& operator/=(const float t);
 
     inline float length() const {
-        return sqrt(e[0]*e[0] + e[1]*e[1] + e[2]*e[2]);
+        return sqrtf(e[0]*e[0] + e[1]*e[1] + e[2]*e[2]);
     }
 
     inline float squared_length() const {
         return e[0]*e[0] + e[1]*e[1] + e[2]*e[2];
     }
+
+    friend std::ostream& operator<<(std::ostream& os, const vec3& v);
+
     float e[3];
 };
 
@@ -67,6 +70,11 @@ inline float dot(const vec3 &v1, const vec3 &v2) {
 
 inline vec3 unit_vector(vec3 v) {
     return v / v.length();
+}
+
+std::ostream& operator<<(std::ostream& os, const vec3& v) {
+    os << "(" << v.e[0] << "," << v.e[1] << "," << v.e[2] << ")";
+    return os;
 }
 
 #endif

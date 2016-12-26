@@ -7,133 +7,147 @@
 //
 
 import Darwin
+import Foundation
+
+public struct StderrOutputStream: TextOutputStream {
+    public mutating func write(_ string: String) {
+        fputs(string, stderr)}
+}
+public var errStream = StderrOutputStream()
+
+func errPrint(_ items: Any..., separator: String = " ", terminator: String = "\n") {
+    for item in items {
+        print(item, separator, terminator: "", to: &errStream)
+    }
+    print(terminator, terminator: "", to: &errStream)
+}
 
 infix operator ⋅ : MultiplicationPrecedence
 
-protocol VectorConvertible {
-    init(vector: Vector)
-    var vector: Vector { get }
+func randomFloat() -> Float {
+    return Float(drand48())
 }
 
-extension VectorConvertible {
-    static var zero: Self { return Self(vector: Vector(0, 0, 0)) }
-    static func *(scalar: Float, rhs: Self) -> Self {
-        return Self(vector: Vector(scalar * rhs.vector.a, scalar * rhs.vector.b, scalar * rhs.vector.c))
+
+struct Vector {
+    static var zero: Vector { return Vector(0, 0, 0) }
+    static func *(scalar: Float, rhs: Vector) -> Vector {
+        return Vector(scalar * rhs.x, scalar * rhs.y, scalar * rhs.z)
     }
 
-    static func /(lhs: Self, scalar: Float) -> Self {
-        return Self(vector: Vector(lhs.vector.a / scalar, lhs.vector.b / scalar, lhs.vector.c / scalar))
+    static func /(lhs: Vector, scalar: Float) -> Vector {
+        return Vector(lhs.x / scalar, lhs.y / scalar, lhs.z / scalar)
     }
 
-    func lerp(to: Self, at t: Float) -> Self {
-        return Self(vector: (1.0 - t) * self.vector + t * to.vector)
+    func lerp(to: Vector, at t: Float) -> Vector {
+        return (1.0 - t) * self + t * to
     }
-}
 
-struct Vector: VectorConvertible {
-    let a, b, c: Float
-    init(_ a: Float, _ b: Float, _ c: Float) {
-        self.a = a
-        self.b = b
-        self.c = c
+    let x, y, z: Float
+    init(_ x: Float, _ y: Float, _ z: Float) {
+        self.x = x
+        self.y = y
+        self.z = z
     }
-    init(vector: Vector) {
-        self = vector
-    }
-    var vector: Vector { return self }
 
     var length: Float {
-        return sqrt(a*a + b*b + c*c)
+        return sqrt(lengthSquared)
     }
+
+    var lengthSquared: Float {
+        return x*x + y*y + z*z
+    }
+
     var unit: Vector {
         return self / length
     }
     static func +(lhs: Vector, rhs: Vector) -> Vector {
-        return Vector(lhs.a + rhs.a, lhs.b + rhs.b, lhs.c + rhs.c)
+        return Vector(lhs.x + rhs.x, lhs.y + rhs.y, lhs.z + rhs.z)
     }
     static func -(lhs: Vector, rhs: Vector) -> Vector {
-        return Vector(lhs.a - rhs.a, lhs.b - rhs.b, lhs.c - rhs.c)
+        return Vector(lhs.x - rhs.x, lhs.y - rhs.y, lhs.z - rhs.z)
     }
     static func ⋅(lhs: Vector, rhs: Vector) -> Float {
-        return lhs.a * rhs.a + lhs.b * rhs.b + lhs.c * rhs.c
+        return lhs.x * rhs.x + lhs.y * rhs.y + lhs.z * rhs.z
+    }
+
+    static func randomInUnitSphere() -> Vector {
+        repeat {
+            let p = 2.0*Vector(randomFloat(), randomFloat(), randomFloat()) - Vector(1,1,1)
+            if p.lengthSquared < 1 { return p }
+        } while true
     }
 }
 
-struct Point: VectorConvertible {
-    let vector: Vector
-    init(vector: Vector) {
-        self.vector = vector
-    }
-    init(x: Float, y: Float, z: Float) {
-        self.vector = Vector(x, y, z)
-    }
-    var x: Float { return vector.a }
-    var y: Float { return vector.b }
-    var z: Float { return vector.c }
-    static func -(lhs: Point, rhs: Point) -> Vector {
-        return lhs.vector - rhs.vector
-    }
-    static func +(lhs: Point, rhs: Vector) -> Point {
-        return Point(vector: lhs.vector + rhs.vector)
+
+extension Vector: CustomStringConvertible {
+    var description: String {
+        return "(\(x),\(y),\(z))"
     }
 }
 
 struct Ray {
-    let origin: Point
+    let origin: Vector
     let direction: Vector
-    init(origin: Point, through: Point) {
+    init(origin: Vector, direction: Vector) {
+        self.origin = origin
+        self.direction = direction
+    }
+    init(origin: Vector, through: Vector) {
         self.origin = origin
         self.direction = through - origin
     }
-    func point(atParameter t: Float) -> Point {
+    func point(atParameter t: Float) -> Vector {
         return origin + t * direction
     }
 }
 
-struct Color: VectorConvertible {
-    let vector: Vector
-    init(vector: Vector) {
-        self.vector = vector
+extension Ray: CustomStringConvertible {
+    var description: String {
+        return "[\(origin) -> \(direction)]"
     }
-    init(r: Float, g: Float, b: Float) {
-        vector = Vector(r, g, b)
-    }
-    var r: Float { return vector.a }
-    var g: Float { return vector.b }
-    var b: Float { return vector.c }
 }
 
+extension Vector {
+    var r: Float { return x }
+    var g: Float { return y }
+    var b: Float { return z }
+}
+
+var totalHits = 0
 extension Ray {
-    func color<World: Hittable>(in world: World) -> Color {
-        if let hit = world.hitLocation(for: self, in: 0...(.infinity)) {
-            let N = hit.normal
-            return 0.5 * Color(r: N.a + 1, g: N.b + 1, b: N.c + 1)
+    func color<World: Hittable>(in world: World) -> Vector {
+        if let hit = world.hitLocation(for: self, in: (0.001)..<(MAXFLOAT)) { // FIXME: .infinity?
+            totalHits += 1
+            let target = hit.p + hit.normal + .randomInUnitSphere()
+            return 0.5 * Ray(origin: hit.p, direction: target - hit.p).color(in: world)
         } else {
             let unitDirection = direction.unit
-            let t = 0.5 * (unitDirection.b + 1)
-            return Color(r: 1, g: 1, b: 1).lerp(to: Color(r: 0.5, g: 0.7, b: 1), at: t)
+            let t = 0.5 * (unitDirection.y + 1)
+            return Vector(1, 1, 1).lerp(to: Vector(0.5, 0.7, 1), at: t)
         }
     }
 }
 
 struct HitLocation {
-    let t: Float
-    let p: Point
-    let normal: Vector
+    var t: Float
+    var p: Vector
+    var normal: Vector
 }
 
 protocol Hittable {
-    func hitLocation(for ray: Ray, in: ClosedRange<Float>) -> HitLocation?
+    func hitLocation(for ray: Ray, in: Range<Float>) -> HitLocation?
 }
 
 struct Sphere: Hittable {
-    let center: Point
+    let center: Vector
     let radius: Float
 
-    func hitLocation(for ray: Ray, in range: ClosedRange<Float>) -> HitLocation? {
+    func hitLocation(for ray: Ray, in range: Range<Float>) -> HitLocation? {
 
         func hitLocation(for t: Float) -> HitLocation? {
-            guard range.contains(t) else { return nil }
+            // Do not include ends of range
+            guard t > range.lowerBound && t < range.upperBound else { return nil }
             let point = ray.point(atParameter: t)
             return HitLocation(t: t,
                                p: point,
@@ -147,7 +161,7 @@ struct Sphere: Hittable {
         let discriminant = b * b - a * c
 
         if discriminant > 0 {
-            let s = sqrt(b*b-a*c)
+            let s = sqrt(discriminant)
             return hitLocation(for: (-b - s)/a) ?? hitLocation(for: (-b + s)/a)
         }
 
@@ -160,25 +174,27 @@ struct HittableArray: Hittable {
 
     init(_ elements: [Hittable]) { self.elements = elements }
 
-    func hitLocation(for ray: Ray, in range: ClosedRange<Float>) -> HitLocation? {
+    func hitLocation(for ray: Ray, in range: Range<Float>) -> HitLocation? {
         return elements.reduce(nil) { (previousHit, hittable) in
             let maxT = previousHit?.t ?? range.upperBound
-            let hit = hittable.hitLocation(for: ray, in: range.lowerBound...maxT)
+            let hit = hittable.hitLocation(for: ray, in: range.lowerBound..<maxT)
             return hit ?? previousHit
         }
     }
 }
 
 struct Camera {
-    let lowerLeftCorner = Point(x: -2, y: -1, z: -1)
+    let lowerLeftCorner = Vector(-2, -1, -1)
     let horizontal = Vector(4, 0, 0)
     let vertical = Vector(0, 2, 0)
-    let origin = Point.zero
+    let origin = Vector.zero
 
     func ray(atPlaneX x: Float, planeY y: Float) -> Ray {
         return Ray(origin: origin, through: lowerLeftCorner + x * horizontal + y * vertical)
     }
 }
+
+srand48(0)
 
 let nx = 200
 let ny = 100
@@ -186,27 +202,23 @@ let ns = 100
 
 print("P3\n\(nx) \(ny)\n255")
 
-
 let world = HittableArray([
-    Sphere(center: Point(x: 0, y: 0, z: -1), radius: 0.5),
-    Sphere(center: Point(x: 0, y: -100.5, z: -1), radius: 100),
+    Sphere(center: Vector(0, 0, -1), radius: 0.5),
+    Sphere(center: Vector(0, -100.5, -1), radius: 100),
 ])
 
 let camera = Camera()
 
-func randomFloat() -> Float {
-    return Float(drand48()) // / Float(UInt32.max))
-}
-
 for j in (0..<ny).reversed() {
     for i in 0..<nx {
-        let col = Color(vector: (0..<ns).reduce(Vector.zero) { (c, _) in
+        let col = (0..<ns).reduce(Vector.zero) { (c, s) in
             let u = (Float(i) + randomFloat()) / Float(nx)
             let v = (Float(j) + randomFloat()) / Float(ny)
 
             let r = camera.ray(atPlaneX: u, planeY: v)
-            return c + r.color(in: world).vector
-        } / Float(ns))
+
+            return c + r.color(in: world)
+        } / Float(ns)
 
         let ir = Int(255.99 * col.r)
         let ig = Int(255.99 * col.g)

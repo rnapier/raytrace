@@ -4,6 +4,9 @@
 #include "float.h"
 #include "camera.h"
 
+using std::cerr;
+using std::endl;
+
 vec3 random_in_unit_sphere() {
     vec3 p;
     do {
@@ -12,10 +15,12 @@ vec3 random_in_unit_sphere() {
     return p;
 }
 
+int totalHits = 0;
 
 vec3 color(const ray& r, hitable *world) {
     hit_record rec;
-    if (world->hit(r, 0.0, MAXFLOAT, rec)) {
+    if (world->hit(r, 0.001, MAXFLOAT, rec)) {
+        totalHits++;
         vec3 target = rec.p + rec.normal + random_in_unit_sphere();
         return 0.5*color(ray(rec.p, target-rec.p), world);
     }
@@ -27,6 +32,7 @@ vec3 color(const ray& r, hitable *world) {
 }
 
 int main() {
+    srand48(0);
     int nx = 200;
     int ny = 100;
     int ns = 100;
@@ -41,20 +47,22 @@ int main() {
     list[1] = new sphere(vec3(0,-100.5,-1), 100);
     hitable *world = new hitable_list(list,2);
     camera cam;
+
     for (int j = ny-1; j >= 0; j--) {
         for (int i = 0; i < nx; i++) {
             vec3 col(0,0,0);
             for (int s=0; s < ns; s++) {
-                float u = float(i + drand48()) / float(nx);
-                float v = float(j + drand48()) / float(ny);
+                float u = float(i + float(drand48())) / float(nx);
+                float v = float(j + float(drand48())) / float(ny);
+
                 ray r = cam.get_ray(u, v);
-                vec3 p = r.point_at_parameter(2.0);
+
                 col += color(r, world);
             }
             col /= float(ns);
-            int ir = int(255.99*col[0]);
-            int ig = int(255.99*col[1]);
-            int ib = int(255.99*col[2]);
+            int ir = int(float(255.99)*col[0]);
+            int ig = int(float(255.99)*col[1]);
+            int ib = int(float(255.99)*col[2]);
 
             std::cout << ir << " " << ig << " " << ib << "\n";
         }
