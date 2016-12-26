@@ -26,7 +26,7 @@ vec3 color(const ray& r, hitable *world) {
     }
     else {
         vec3 unit_direction = unit_vector(r.direction());
-        float t = 0.5*(unit_direction.y() + 1.0);
+        double t = 0.5*(unit_direction.y() + 1.0);
         return (1.0-t)*vec3(1.0, 1.0, 1.0) + t*vec3(0.5, 0.7, 1.0);
     }
 }
@@ -52,17 +52,17 @@ int main() {
         for (int i = 0; i < nx; i++) {
             vec3 col(0,0,0);
             for (int s=0; s < ns; s++) {
-                float u = float(i + float(drand48())) / float(nx);
-                float v = float(j + float(drand48())) / float(ny);
+                double u = (double(i) + drand48()) / double(nx);
+                double v = (double(j) + drand48()) / double(ny);
 
                 ray r = cam.get_ray(u, v);
 
                 col += color(r, world);
             }
-            col /= float(ns);
-            int ir = int(float(255.99)*col[0]);
-            int ig = int(float(255.99)*col[1]);
-            int ib = int(float(255.99)*col[2]);
+            col /= double(ns);
+            int ir = int(255.99*col[0]);
+            int ig = int(255.99*col[1]);
+            int ib = int(255.99*col[2]);
 
             std::cout << ir << " " << ig << " " << ib << "\n";
         }
