@@ -123,7 +123,7 @@ extension Ray {
     func color<World: Hittable>(in world: World, depth: Int = 0) -> Vector {
         if let rec = world.hitRecord(for: self, in: (0.001)..<(Double(MAXFLOAT))) {
             if depth < 50,
-                let scatterResult = rec.material(self, rec) {
+                let scatterResult = rec.material.scatter(ray: self, hitRecord: rec) {
                 return scatterResult.attenuation * scatterResult.scattered.color(in: world, depth: depth + 1)
             } else {
                 return Vector.zero
@@ -209,18 +209,22 @@ struct ScatterResult {
     let attenuation: Vector
 }
 
-typealias Material = (Ray, HitRecord) -> ScatterResult?
+protocol Material {
+    func scatter(ray: Ray, hitRecord: HitRecord) -> ScatterResult?
+}
 
-func lambertian(albedo: Vector) -> Material {
-    return { (ray: Ray, rec: HitRecord) -> ScatterResult? in
+struct Lambertian: Material {
+    let albedo: Vector
+    func scatter(ray: Ray, hitRecord rec: HitRecord) -> ScatterResult? {
         let target = rec.p + rec.normal + Vector.randomInUnitSphere()
         return ScatterResult(scattered: Ray(origin: rec.p, direction: target - rec.p),
                              attenuation: albedo)
-        }
+    }
 }
 
-func metal(albedo: Vector) -> Material {
-    return { (ray: Ray, rec: HitRecord) -> ScatterResult? in
+struct Metal: Material {
+    let albedo: Vector
+    func scatter(ray: Ray, hitRecord rec: HitRecord) -> ScatterResult? {
         let reflected = ray.direction.unit.reflect(acrossNormal: rec.normal)
         let scattered = Ray(origin: rec.p, direction: reflected)
         guard scattered.direction ⋅ rec.normal > 0 else { return nil }
@@ -238,10 +242,10 @@ let ns = 100
 print("P3\n\(nx) \(ny)\n255")
 
 let world = HittableArray([
-    Sphere(center: Vector(0, 0, -1), radius: 0.5, material: lambertian(albedo: Vector(0.8, 0.3, 0.3))),
-    Sphere(center: Vector(0, -100.5, -1), radius: 100, material: lambertian(albedo: Vector(0.8, 0.8, 0.0))),
-    Sphere(center: Vector(1,0,-1), radius: 0.5, material: metal(albedo: Vector(0.8,0.6,0.2))),
-    Sphere(center: Vector(-1,0,-1), radius: 0.5, material: metal(albedo: Vector(0.8,0.8,0.8))),
+    Sphere(center: Vector(0, 0, -1), radius: 0.5, material: Lambertian(albedo: Vector(0.8, 0.3, 0.3))),
+    Sphere(center: Vector(0, -100.5, -1), radius: 100, material: Lambertian(albedo: Vector(0.8, 0.8, 0.0))),
+    Sphere(center: Vector(1,0,-1), radius: 0.5, material: Metal(albedo: Vector(0.8,0.6,0.2))),
+    Sphere(center: Vector(-1,0,-1), radius: 0.5, material: Metal(albedo: Vector(0.8,0.8,0.8))),
     ])
 
 let camera = Camera()
