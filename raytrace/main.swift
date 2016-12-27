@@ -120,11 +120,11 @@ extension Vector {
 }
 
 extension Ray {
-    func color<World: Hittable>(in world: World, depth: Int = 0) -> Vector {
-        if let rec = world.hitRecord(for: self, in: (0.001)..<(Double(MAXFLOAT))) {
+    func color(depth: Int = 0, in world: Hittable) -> Vector {
+        if let rec = world(self, (0.001)..<(Double(MAXFLOAT))) {
             if depth < 50,
                 let scatterResult = rec.material(self, rec) {
-                return scatterResult.attenuation * scatterResult.scattered.color(in: world, depth: depth + 1)
+                return scatterResult.attenuation * scatterResult.scattered.color(depth: depth + 1, in: world)
             } else {
                 return Vector.zero
             }
@@ -143,11 +143,9 @@ struct HitRecord {
     var material: Material
 }
 
-protocol Hittable {
-    func hitRecord(for ray: Ray, in: Range<Double>) -> HitRecord?
-}
+typealias Hittable = (Ray, Range<Double>) -> HitRecord?
 
-struct Sphere: Hittable {
+struct Sphere {
     let center: Vector
     let radius: Double
     let material: Material
@@ -179,7 +177,7 @@ struct Sphere: Hittable {
     }
 }
 
-struct HittableArray: Hittable {
+struct HittableArray {
     let elements: [Hittable]
 
     init(_ elements: [Hittable]) { self.elements = elements }
@@ -187,7 +185,7 @@ struct HittableArray: Hittable {
     func hitRecord(for ray: Ray, in range: Range<Double>) -> HitRecord? {
         return elements.reduce(nil) { (previousHit, hittable) in
             let maxT = previousHit?.t ?? range.upperBound
-            let hit = hittable.hitRecord(for: ray, in: range.lowerBound..<maxT)
+            let hit = hittable(ray, range.lowerBound..<maxT)
             return hit ?? previousHit
         }
     }
@@ -238,10 +236,10 @@ let ns = 100
 print("P3\n\(nx) \(ny)\n255")
 
 let world = HittableArray([
-    Sphere(center: Vector(0, 0, -1), radius: 0.5, material: lambertian(albedo: Vector(0.8, 0.3, 0.3))),
-    Sphere(center: Vector(0, -100.5, -1), radius: 100, material: lambertian(albedo: Vector(0.8, 0.8, 0.0))),
-    Sphere(center: Vector(1,0,-1), radius: 0.5, material: metal(albedo: Vector(0.8,0.6,0.2))),
-    Sphere(center: Vector(-1,0,-1), radius: 0.5, material: metal(albedo: Vector(0.8,0.8,0.8))),
+    Sphere(center: Vector(0, 0, -1), radius: 0.5, material: lambertian(albedo: Vector(0.8, 0.3, 0.3))).hitRecord,
+    Sphere(center: Vector(0, -100.5, -1), radius: 100, material: lambertian(albedo: Vector(0.8, 0.8, 0.0))).hitRecord,
+    Sphere(center: Vector(1,0,-1), radius: 0.5, material: metal(albedo: Vector(0.8,0.6,0.2))).hitRecord,
+    Sphere(center: Vector(-1,0,-1), radius: 0.5, material: metal(albedo: Vector(0.8,0.8,0.8))).hitRecord,
     ])
 
 let camera = Camera()
@@ -252,7 +250,7 @@ for j in (0..<ny).reversed() {
             let u = (Double(i) + drand48()) / Double(nx)
             let v = (Double(j) + drand48()) / Double(ny)
             let r = camera.ray(atPlaneX: u, planeY: v)
-            return c + r.color(in: world)
+            return c + r.color(in: world.hitRecord)
             }
         col = col / Double(ns)
         col = Vector(sqrt(col.x), sqrt(col.y), sqrt(col.z))
