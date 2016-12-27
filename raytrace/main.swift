@@ -29,6 +29,12 @@ struct Vector {
     static func *(scalar: Double, rhs: Vector) -> Vector {
         return Vector(scalar * rhs.x, scalar * rhs.y, scalar * rhs.z)
     }
+    static func *(rhs: Vector, scalar: Double) -> Vector {
+        return Vector(scalar * rhs.x, scalar * rhs.y, scalar * rhs.z)
+    }
+    static prefix func -(v: Vector) -> Vector {
+        return Vector(-v.x, -v.y, -v.z)
+    }
 
     static func /(lhs: Vector, scalar: Double) -> Vector {
         return Vector(lhs.x / scalar, lhs.y / scalar, lhs.z / scalar)
@@ -82,6 +88,17 @@ struct Vector {
 
     func reflect(acrossNormal n: Vector) -> Vector {
         return self - 2*self⋅n*n
+    }
+
+    func refract(acrossNormal n: Vector, withRefractiveIndex ri: Double) -> Vector? {
+        let uv = unit
+        let dt = uv ⋅ n
+        let discriminant = 1.0 - ri*ri*(1-dt*dt)
+        if discriminant > 0 {
+            return ri*(uv - n*dt) - n*sqrt(discriminant)
+        } else {
+            return nil
+        }
     }
 }
 
@@ -233,6 +250,30 @@ struct Metal: Material {
     }
 }
 
+struct Dielectric: Material {
+    let refractionIndex: Double
+    func scatter(ray: Ray, hitRecord rec: HitRecord) -> ScatterResult? {
+        let reflected = ray.direction.reflect(acrossNormal: rec.normal)
+
+        let outwardNormal: Vector
+        let ni_over_nt: Double
+        if ray.direction ⋅ rec.normal > 0 {
+            outwardNormal = -rec.normal
+            ni_over_nt = refractionIndex
+        } else {
+            outwardNormal = rec.normal
+            ni_over_nt = 1.0 / refractionIndex
+        }
+
+        let attenuation = Vector(1,1,1)
+        if let refracted = ray.direction.refract(acrossNormal: outwardNormal, withRefractiveIndex: ni_over_nt) {
+            return ScatterResult(scattered: Ray(origin: rec.p, direction: refracted), attenuation: attenuation)
+        } else {
+            return ScatterResult(scattered: Ray(origin: rec.p, direction: reflected), attenuation: attenuation)
+        }
+    }
+}
+
 srand48(0)
 
 let nx = 200
@@ -242,10 +283,10 @@ let ns = 100
 print("P3\n\(nx) \(ny)\n255")
 
 let world = HittableArray([
-    Sphere(center: Vector(0, 0, -1), radius: 0.5, material: Lambertian(albedo: Vector(0.8, 0.3, 0.3))),
+    Sphere(center: Vector(0, 0, -1), radius: 0.5, material: Lambertian(albedo: Vector(0.1, 0.2, 0.5))),
     Sphere(center: Vector(0, -100.5, -1), radius: 100, material: Lambertian(albedo: Vector(0.8, 0.8, 0.0))),
     Sphere(center: Vector(1,0,-1), radius: 0.5, material: Metal(albedo: Vector(0.8,0.6,0.2))),
-    Sphere(center: Vector(-1,0,-1), radius: 0.5, material: Metal(albedo: Vector(0.8,0.8,0.8))),
+    Sphere(center: Vector(-1,0,-1), radius: 0.5, material: Dielectric(refractionIndex: 1.5)),
     ])
 
 let camera = Camera()
