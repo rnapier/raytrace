@@ -277,11 +277,15 @@ struct Lambertian: Material {
 
 struct Metal: Material {
     let albedo: Vector
+    let fuzz: Double
+    init(albedo: Vector, fuzz: Double) {
+        self.albedo = albedo
+        self.fuzz = min(fuzz, 1)
+    }
     func scatter(ray: Ray, hitRecord rec: HitRecord) -> ScatterResult? {
         let reflected = ray.direction.unit.reflect(acrossNormal: rec.normal)
-        let scattered = Ray(origin: rec.p, direction: reflected)
+        let scattered = Ray(origin: rec.p, direction: reflected + fuzz*Vector.randomInUnitSphere())
         guard scattered.direction ⋅ rec.normal > 0 else { return nil }
-
         return ScatterResult(scattered: scattered, attenuation: albedo)
     }
 }
@@ -326,6 +330,31 @@ struct Dielectric: Material {
     }
 }
 
+func randomScene() -> HittableArray {
+    var list = [Sphere(center: Vector(0,-1000,0), radius: 1000, material: Lambertian(albedo: Vector(0.5,0.5,0.5)))]
+
+    for a in -11..<11 {
+        for b in -11..<11 {
+            let chooseMat = drand48()
+            let center = Vector(Double(a)+0.9*drand48(),0.2,Double(b)+0.9*drand48());
+            if (center-Vector(4,0.2,0)).length > 0.9 {
+                if (chooseMat < 0.8) { // diffuse
+                    list.append(Sphere(center: center, radius: 0.2, material: Lambertian(albedo: Vector(drand48()*drand48(), drand48()*drand48(), drand48()*drand48()))))
+                } else if chooseMat < 0.95 { // metal
+                    list.append(Sphere(center: center, radius: 0.2, material: Metal(albedo: Vector(0.5*(1 + drand48()), 0.5*(1 + drand48()), 0.5*(1 + drand48())), fuzz: 0.5*drand48())))
+                } else { // glass
+                    list.append(Sphere(center: center, radius: 0.2, material: Dielectric(refractionIndex: 1.5)))
+                }
+            }
+        }
+    }
+
+    list.append(Sphere(center: Vector(0,1,0), radius: 1.0, material: Dielectric(refractionIndex: 1.5)))
+    list.append(Sphere(center: Vector(-4,1,0), radius: 1.0, material: Lambertian(albedo: Vector(0.4,0.2,0.1))))
+    list.append(Sphere(center: Vector(4,1,0), radius: 1.0, material: Metal(albedo: Vector(0.7, 0.6, 0.5), fuzz: 0.0)))
+    return HittableArray(list)
+}
+
 srand48(0)
 
 let nx = 200
@@ -334,19 +363,22 @@ let ns = 100
 
 print("P3\n\(nx) \(ny)\n255")
 
-let world = HittableArray([
-    Sphere(center: Vector(0, 0, -1), radius: 0.5, material: Lambertian(albedo: Vector(0.1, 0.2, 0.5))),
-    Sphere(center: Vector(0, -100.5, -1), radius: 100, material: Lambertian(albedo: Vector(0.8, 0.8, 0.0))),
-    Sphere(center: Vector(1,0,-1), radius: 0.5, material: Metal(albedo: Vector(0.8,0.6,0.2))),
-    Sphere(center: Vector(-1,0,-1), radius: 0.5, material: Dielectric(refractionIndex: 1.5)),
-    Sphere(center: Vector(-1,0,-1), radius: -0.45, material: Dielectric(refractionIndex: 1.5)),
-    ])
+let world = randomScene()
 
-let lookFrom = Vector(3,3,2)
-let lookAt = Vector(0,0,-1)
-let distToFocus = (lookFrom - lookAt).length
-let aperture = 2.0
-let camera = Camera(lookFrom: lookFrom, lookAt: lookAt, vup: Vector(0,1,0), vfov: 20, aspect: Double(nx)/Double(ny), aperture: aperture, focusDist: distToFocus)
+//    HittableArray([
+//    Sphere(center: Vector(0, 0, -1), radius: 0.5, material: Lambertian(albedo: Vector(0.1, 0.2, 0.5))),
+//    Sphere(center: Vector(0, -100.5, -1), radius: 100, material: Lambertian(albedo: Vector(0.8, 0.8, 0.0))),
+//    Sphere(center: Vector(1,0,-1), radius: 0.5, material: Metal(albedo: Vector(0.8,0.6,0.2))),
+//    Sphere(center: Vector(-1,0,-1), radius: 0.5, material: Dielectric(refractionIndex: 1.5)),
+//    Sphere(center: Vector(-1,0,-1), radius: -0.45, material: Dielectric(refractionIndex: 1.5)),
+//    ])
+
+let lookFrom = Vector(16,2,4)
+let lookAt = Vector(0,0.5,0)
+let focalPoint = Vector(4,1,0)
+let distToFocus = (lookFrom - focalPoint).length
+let aperture = 1.0/16.0
+let camera = Camera(lookFrom: lookFrom, lookAt: lookAt, vup: Vector(0,1,0), vfov: 15, aspect: Double(nx)/Double(ny), aperture: aperture, focusDist: distToFocus)
 
 for j in (0..<ny).reversed() {
     for i in 0..<nx {
