@@ -6,7 +6,6 @@
 //
 //
 
-import Darwin
 import Foundation
 
 public struct StderrOutputStream: TextOutputStream {
@@ -364,14 +363,6 @@ let ns = 100
 print("P3\n\(nx) \(ny)\n255")
 
 let world = randomScene()
-
-//    HittableArray([
-//    Sphere(center: Vector(0, 0, -1), radius: 0.5, material: Lambertian(albedo: Vector(0.1, 0.2, 0.5))),
-//    Sphere(center: Vector(0, -100.5, -1), radius: 100, material: Lambertian(albedo: Vector(0.8, 0.8, 0.0))),
-//    Sphere(center: Vector(1,0,-1), radius: 0.5, material: Metal(albedo: Vector(0.8,0.6,0.2))),
-//    Sphere(center: Vector(-1,0,-1), radius: 0.5, material: Dielectric(refractionIndex: 1.5)),
-//    Sphere(center: Vector(-1,0,-1), radius: -0.45, material: Dielectric(refractionIndex: 1.5)),
-//    ])
 
 let lookFrom = Vector(16,2,4)
 let lookAt = Vector(0,0.5,0)
