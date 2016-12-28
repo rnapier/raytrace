@@ -24,6 +24,12 @@ func errPrint(_ items: Any..., separator: String = " ", terminator: String = "\n
 
 infix operator ⋅ : MultiplicationPrecedence
 
+func schlick(cosine: Double, ri: Double) -> Double {
+    var r0 = (1-ri)/(1+ri)
+    r0 = r0*r0
+    return r0 + (1-r0)*pow((1-cosine), 5)
+}
+
 struct Vector {
     static var zero: Vector { return Vector(0, 0, 0) }
     static func *(scalar: Double, rhs: Vector) -> Vector {
@@ -253,24 +259,40 @@ struct Metal: Material {
 struct Dielectric: Material {
     let refractionIndex: Double
     func scatter(ray: Ray, hitRecord rec: HitRecord) -> ScatterResult? {
-        let reflected = ray.direction.reflect(acrossNormal: rec.normal)
-
         let outwardNormal: Vector
+        let reflected = ray.direction.reflect(acrossNormal: rec.normal)
         let ni_over_nt: Double
+        let attenuation = Vector(1,1,1)
+        let cosine: Double
         if ray.direction ⋅ rec.normal > 0 {
             outwardNormal = -rec.normal
             ni_over_nt = refractionIndex
+            cosine = refractionIndex * ray.direction ⋅ rec.normal / ray.direction.length
         } else {
             outwardNormal = rec.normal
             ni_over_nt = 1.0 / refractionIndex
+            cosine = -ray.direction ⋅ rec.normal / ray.direction.length
         }
 
-        let attenuation = Vector(1,1,1)
-        if let refracted = ray.direction.refract(acrossNormal: outwardNormal, withRefractiveIndex: ni_over_nt) {
-            return ScatterResult(scattered: Ray(origin: rec.p, direction: refracted), attenuation: attenuation)
+        let reflectProb: Double
+        let refracted = ray.direction.refract(acrossNormal: outwardNormal, withRefractiveIndex: ni_over_nt)
+        if refracted != nil {
+            reflectProb = schlick(cosine: cosine, ri: refractionIndex)
         } else {
-            return ScatterResult(scattered: Ray(origin: rec.p, direction: reflected), attenuation: attenuation)
+            reflectProb = 1.0
         }
+
+        if drand48() < reflectProb {
+            return ScatterResult(scattered: Ray(origin: rec.p, direction: reflected), attenuation: attenuation)
+        } else {
+            return ScatterResult(scattered: Ray(origin: rec.p, direction: refracted!), attenuation: attenuation)
+        }
+//        if let refracted = ray.direction.refract(acrossNormal: outwardNormal, withRefractiveIndex: ni_over_nt),
+//            drand48() >= schlick(cosine: cosine, ri: refractionIndex) {
+//            return ScatterResult(scattered: Ray(origin: rec.p, direction: refracted), attenuation: attenuation)
+//        } else {
+//            return ScatterResult(scattered: Ray(origin: rec.p, direction: reflected), attenuation: attenuation)
+//        }
     }
 }
 
@@ -287,6 +309,7 @@ let world = HittableArray([
     Sphere(center: Vector(0, -100.5, -1), radius: 100, material: Lambertian(albedo: Vector(0.8, 0.8, 0.0))),
     Sphere(center: Vector(1,0,-1), radius: 0.5, material: Metal(albedo: Vector(0.8,0.6,0.2))),
     Sphere(center: Vector(-1,0,-1), radius: 0.5, material: Dielectric(refractionIndex: 1.5)),
+    Sphere(center: Vector(-1,0,-1), radius: -0.45, material: Dielectric(refractionIndex: 1.5)),
     ])
 
 let camera = Camera()
