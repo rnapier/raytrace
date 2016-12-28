@@ -217,9 +217,18 @@ struct HittableArray: Hittable {
 }
 
 struct Camera {
-    let lowerLeftCorner = Vector(-2, -1, -1)
-    let horizontal = Vector(4, 0, 0)
-    let vertical = Vector(0, 2, 0)
+    init(vfov: Double, aspect: Double) {
+        let theta = vfov*M_PI/180
+        let halfHeight = tan(theta/2)
+        let halfWidth = aspect * halfHeight
+        lowerLeftCorner = Vector(-halfWidth, -halfHeight, -1)
+        horizontal = Vector(2*halfWidth, 0, 0)
+        vertical = Vector(0, 2*halfHeight, 0)
+
+    }
+    let lowerLeftCorner: Vector
+    let horizontal: Vector
+    let vertical: Vector
     let origin = Vector.zero
 
     func ray(atPlaneX x: Double, planeY y: Double) -> Ray {
@@ -304,15 +313,19 @@ let ns = 100
 
 print("P3\n\(nx) \(ny)\n255")
 
+let R = cos(M_PI/4)
+
 let world = HittableArray([
-    Sphere(center: Vector(0, 0, -1), radius: 0.5, material: Lambertian(albedo: Vector(0.1, 0.2, 0.5))),
-    Sphere(center: Vector(0, -100.5, -1), radius: 100, material: Lambertian(albedo: Vector(0.8, 0.8, 0.0))),
-    Sphere(center: Vector(1,0,-1), radius: 0.5, material: Metal(albedo: Vector(0.8,0.6,0.2))),
-    Sphere(center: Vector(-1,0,-1), radius: 0.5, material: Dielectric(refractionIndex: 1.5)),
-    Sphere(center: Vector(-1,0,-1), radius: -0.45, material: Dielectric(refractionIndex: 1.5)),
+    Sphere(center: Vector(-R, 0, -1), radius: R, material: Lambertian(albedo: Vector(0, 0, 1))),
+    Sphere(center: Vector( R, 0, -1), radius: R, material: Lambertian(albedo: Vector(1, 0, 0))),
+
+//    Sphere(center: Vector(0, -100.5, -1), radius: 100, material: Lambertian(albedo: Vector(0.8, 0.8, 0.0))),
+//    Sphere(center: Vector(1,0,-1), radius: 0.5, material: Metal(albedo: Vector(0.8,0.6,0.2))),
+//    Sphere(center: Vector(-1,0,-1), radius: 0.5, material: Dielectric(refractionIndex: 1.5)),
+//    Sphere(center: Vector(-1,0,-1), radius: -0.45, material: Dielectric(refractionIndex: 1.5)),
     ])
 
-let camera = Camera()
+let camera = Camera(vfov: 90, aspect: Double(nx)/Double(ny))
 
 for j in (0..<ny).reversed() {
     for i in 0..<nx {
