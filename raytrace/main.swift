@@ -23,6 +23,7 @@ func errPrint(_ items: Any..., separator: String = " ", terminator: String = "\n
 }
 
 infix operator ⋅ : MultiplicationPrecedence
+infix operator × : MultiplicationPrecedence
 
 func schlick(cosine: Double, ri: Double) -> Double {
     var r0 = (1-ri)/(1+ri)
@@ -69,7 +70,6 @@ struct Vector {
         return self / length
     }
 
-
     static func +(lhs: Vector, rhs: Vector) -> Vector {
         return Vector(lhs.x + rhs.x, lhs.y + rhs.y, lhs.z + rhs.z)
     }
@@ -83,6 +83,12 @@ struct Vector {
 
     static func ⋅(lhs: Vector, rhs: Vector) -> Double {
         return lhs.x * rhs.x + lhs.y * rhs.y + lhs.z * rhs.z
+    }
+
+    static func ×(lhs: Vector, rhs: Vector) -> Vector {
+        return Vector( (  lhs.y * rhs.z - lhs.z * rhs.y),
+                       (-(lhs.x * rhs.z - lhs.z * rhs.x)),
+                       (  lhs.x * rhs.y - lhs.y * rhs.x))
     }
 
     static func randomInUnitSphere() -> Vector {
@@ -217,22 +223,26 @@ struct HittableArray: Hittable {
 }
 
 struct Camera {
-    init(vfov: Double, aspect: Double) {
+    init(lookFrom: Vector, lookAt: Vector, vup: Vector, vfov: Double, aspect: Double) {
         let theta = vfov*M_PI/180
         let halfHeight = tan(theta/2)
         let halfWidth = aspect * halfHeight
-        lowerLeftCorner = Vector(-halfWidth, -halfHeight, 0)
-        horizontal = Vector(2*halfWidth, 0, 0)
-        vertical = Vector(0, 2*halfHeight, 0)
+        origin = lookFrom
+        let w = (lookFrom - lookAt).unit
+        let u = (vup × w).unit
+        let v = w × u
+        lowerLeftCorner = origin - halfWidth*u - halfHeight*v - w
+        horizontal = 2*halfWidth*u
+        vertical = 2*halfHeight*v
 
     }
     let lowerLeftCorner: Vector
     let horizontal: Vector
     let vertical: Vector
-    let origin = Vector.zero
+    let origin: Vector
 
     func ray(atPlaneX x: Double, planeY y: Double) -> Ray {
-        return Ray(origin: origin, through: lowerLeftCorner + x * horizontal + y * vertical)
+        return Ray(origin: origin, direction: lowerLeftCorner + x * horizontal + y * vertical - origin)
     }
 }
 
@@ -321,7 +331,7 @@ let world = HittableArray([
     Sphere(center: Vector(-1,0,-1), radius: -0.45, material: Dielectric(refractionIndex: 1.5)),
     ])
 
-let camera = Camera(vfov: 90, aspect: Double(nx)/Double(ny))
+let camera = Camera(lookFrom: Vector(-2,2,1), lookAt: Vector(0,0,-1), vup: Vector(0,1,0), vfov: 90, aspect: Double(nx)/Double(ny))
 
 for j in (0..<ny).reversed() {
     for i in 0..<nx {
