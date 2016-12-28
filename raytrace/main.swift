@@ -98,6 +98,13 @@ struct Vector {
         } while true
     }
 
+    static func randomInUnitDisk() -> Vector {
+        repeat {
+            let p = 2.0*Vector(drand48(), drand48(), 0) - Vector(1,1,0)
+            if p⋅p < 1 { return p }
+        } while true
+    }
+
     func reflect(acrossNormal n: Vector) -> Vector {
         return self - 2*self⋅n*n
     }
@@ -223,26 +230,30 @@ struct HittableArray: Hittable {
 }
 
 struct Camera {
-    init(lookFrom: Vector, lookAt: Vector, vup: Vector, vfov: Double, aspect: Double) {
+    init(lookFrom: Vector, lookAt: Vector, vup: Vector, vfov: Double, aspect: Double, aperture: Double, focusDist: Double) {
+        lensRadius = aperture / 2
         let theta = vfov*M_PI/180
         let halfHeight = tan(theta/2)
         let halfWidth = aspect * halfHeight
         origin = lookFrom
-        let w = (lookFrom - lookAt).unit
-        let u = (vup × w).unit
-        let v = w × u
-        lowerLeftCorner = origin - halfWidth*u - halfHeight*v - w
-        horizontal = 2*halfWidth*u
-        vertical = 2*halfHeight*v
-
+        w = (lookFrom - lookAt).unit
+        u = (vup × w).unit
+        v = w × u
+        lowerLeftCorner = origin - halfWidth*focusDist*u - halfHeight*focusDist*v - focusDist*w
+        horizontal = 2*halfWidth*focusDist*u
+        vertical = 2*halfHeight*focusDist*v
     }
     let lowerLeftCorner: Vector
     let horizontal: Vector
     let vertical: Vector
     let origin: Vector
+    let u, v, w: Vector
+    let lensRadius: Double
 
     func ray(atPlaneX x: Double, planeY y: Double) -> Ray {
-        return Ray(origin: origin, direction: lowerLeftCorner + x * horizontal + y * vertical - origin)
+        let rd = lensRadius*Vector.randomInUnitDisk()
+        let offset = u * rd.x + v * rd.y
+        return Ray(origin: origin + offset, direction: lowerLeftCorner + x * horizontal + y * vertical - origin - offset)
     }
 }
 
@@ -331,7 +342,11 @@ let world = HittableArray([
     Sphere(center: Vector(-1,0,-1), radius: -0.45, material: Dielectric(refractionIndex: 1.5)),
     ])
 
-let camera = Camera(lookFrom: Vector(-2,2,1), lookAt: Vector(0,0,-1), vup: Vector(0,1,0), vfov: 90, aspect: Double(nx)/Double(ny))
+let lookFrom = Vector(3,3,2)
+let lookAt = Vector(0,0,-1)
+let distToFocus = (lookFrom - lookAt).length
+let aperture = 2.0
+let camera = Camera(lookFrom: lookFrom, lookAt: lookAt, vup: Vector(0,1,0), vfov: 20, aspect: Double(nx)/Double(ny), aperture: aperture, focusDist: distToFocus)
 
 for j in (0..<ny).reversed() {
     for i in 0..<nx {
