@@ -40,7 +40,12 @@ int main() {
     list[3] = new sphere(vec3(-1,0,-1), 0.5, new dielectric(1.5));
     list[4] = new sphere(vec3(-1,0,-1), -0.45, new dielectric(1.5));
     hitable *world = new hitable_list(list,5);
-    camera cam(vec3(-2,2,1), vec3(0,0,-1), vec3(0,1,0), 90, double(nx)/double(ny));
+
+    vec3 lookfrom(3,3,2);
+    vec3 lookat(0,0,-1);
+    double dist_to_focus = (lookfrom-lookat).length();
+    double aperature = 2.0;
+    camera cam(lookfrom, lookat, vec3(0,1,0), 20, double(nx)/double(ny), aperature, dist_to_focus);
 
     for (int j = ny-1; j >= 0; j--) {
         for (int i = 0; i < nx; i++) {
