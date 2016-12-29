@@ -1,0 +1,1 @@
+rm -f main && swiftc -wmo -O *.swift -o main && ./main > out.ppm && open out.ppm
