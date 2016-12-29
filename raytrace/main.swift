@@ -160,8 +160,8 @@ extension Vector {
 }
 
 extension Ray {
-    func color<World: Hittable>(in world: World, depth: Int = 0) -> Vector {
-        if let rec = world.hitRecord(for: self, in: (0.001)..<(Double(MAXFLOAT))) {
+    func color(in world: Hittable, depth: Int = 0) -> Vector {
+        if let rec = world.hit(for: self, in: (0.001)..<(Double(MAXFLOAT))) {
             if depth < 50,
                 let scatterResult = rec.material.scatter(ray: self, hitRecord: rec) {
                 return scatterResult.attenuation * scatterResult.scattered.color(in: world, depth: depth + 1)
@@ -176,35 +176,27 @@ extension Ray {
     }
 }
 
-struct HitRecord {
+struct Hit {
     var t: Double
     var p: Vector
     var normal: Vector
     var material: Material
 }
 
-protocol Hittable {
-    func hitRecord(for ray: Ray, in: Range<Double>) -> HitRecord?
+struct Hittable {
+    let hitFunction: (Ray, Range<Double>) -> Hit?
+    func hit(for ray: Ray, in range: Range<Double>) -> Hit? { return hitFunction(ray, range) }
 }
 
-struct Sphere<M: Material>: Hittable {
-    let center: Vector
-    let radius: Double
-    let material: M
+func sphere<M: Material>(center: Vector, radius: Double, material: M) ->  Hittable {
+    return Hittable(
+        hitFunction: { (ray: Ray, range: Range<Double>) -> Hit? in
 
-    init(center: Vector, radius: Double, material: M) {
-        self.center = center
-        self.radius = radius
-        self.material = material
-    }
-
-    func hitRecord(for ray: Ray, in range: Range<Double>) -> HitRecord? {
-
-        func hitRecord(for t: Double) -> HitRecord? {
+        func hitRecord(for t: Double) -> Hit? {
             // Do not include ends of range
             guard t > range.lowerBound && t < range.upperBound else { return nil }
             let point = ray.point(atParameter: t)
-            return HitRecord(t: t,
+            return Hit(t: t,
                              p: point,
                              normal: (point - center) / radius,
                              material: material)
@@ -222,25 +214,22 @@ struct Sphere<M: Material>: Hittable {
         }
 
         return nil
-    }
+    })
 }
 
-struct HittableArray: Hittable {
-    let elements: [Hittable]
-
-    init(_ elements: [Hittable]) { self.elements = elements }
-
-    func hitRecord(for ray: Ray, in range: Range<Double>) -> HitRecord? {
-        var closestHit: HitRecord? = nil
-        var maxT = range.upperBound
-        for element in elements {
-            if let hit = element.hitRecord(for: ray, in: range.lowerBound..<maxT) {
-                closestHit = hit
-                maxT = hit.t
+func hittableArray(_ elements: [Hittable]) -> Hittable {
+    return Hittable(
+        hitFunction: { (ray: Ray, range: Range<Double>) -> Hit? in
+            var closestHit: Hit? = nil
+            var maxT = range.upperBound
+            for element in elements {
+                if let hit = element.hit(for: ray, in: range.lowerBound..<maxT) {
+                    closestHit = hit
+                    maxT = hit.t
+                }
             }
-        }
-        return closestHit
-    }
+            return closestHit
+    })
 }
 
 struct Camera {
@@ -277,12 +266,12 @@ struct ScatterResult {
 }
 
 protocol Material {
-    func scatter(ray: Ray, hitRecord: HitRecord) -> ScatterResult?
+    func scatter(ray: Ray, hitRecord: Hit) -> ScatterResult?
 }
 
 struct Lambertian: Material {
     let albedo: Vector
-    func scatter(ray: Ray, hitRecord rec: HitRecord) -> ScatterResult? {
+    func scatter(ray: Ray, hitRecord rec: Hit) -> ScatterResult? {
         let target = rec.p + rec.normal + Vector.randomInUnitSphere()
         return ScatterResult(scattered: Ray(origin: rec.p, direction: target - rec.p),
                              attenuation: albedo)
@@ -296,7 +285,7 @@ struct Metal: Material {
         self.albedo = albedo
         self.fuzz = min(fuzz, 1)
     }
-    func scatter(ray: Ray, hitRecord rec: HitRecord) -> ScatterResult? {
+    func scatter(ray: Ray, hitRecord rec: Hit) -> ScatterResult? {
         let reflected = ray.direction.unit.reflect(acrossNormal: rec.normal)
         let scattered = Ray(origin: rec.p, direction: reflected + fuzz*Vector.randomInUnitSphere())
         guard scattered.direction ⋅ rec.normal > 0 else { return nil }
@@ -306,7 +295,7 @@ struct Metal: Material {
 
 struct Dielectric: Material {
     let refractionIndex: Double
-    func scatter(ray: Ray, hitRecord rec: HitRecord) -> ScatterResult? {
+    func scatter(ray: Ray, hitRecord rec: Hit) -> ScatterResult? {
         let outwardNormal: Vector
         let reflected = ray.direction.reflect(acrossNormal: rec.normal)
         let ni_over_nt: Double
@@ -344,8 +333,8 @@ struct Dielectric: Material {
     }
 }
 
-func randomScene() -> HittableArray {
-    var list: [Hittable] = [Sphere(center: Vector(0,-1000,0), radius: 1000, material: Lambertian(albedo: Vector(0.5,0.5,0.5)))]
+func randomScene() -> Hittable {
+    var list = [sphere(center: Vector(0,-1000,0), radius: 1000, material: Lambertian(albedo: Vector(0.5,0.5,0.5)))]
 
     for a in -11..<11 {
         for b in -11..<11 {
@@ -353,20 +342,20 @@ func randomScene() -> HittableArray {
             let center = Vector(Double(a)+0.9*drand48(),0.2,Double(b)+0.9*drand48());
             if (center-Vector(4,0.2,0)).length > 0.9 {
                 if (chooseMat < 0.8) { // diffuse
-                    list.append(Sphere(center: center, radius: 0.2, material: Lambertian(albedo: Vector(drand48()*drand48(), drand48()*drand48(), drand48()*drand48()))))
+                    list.append(sphere(center: center, radius: 0.2, material: Lambertian(albedo: Vector(drand48()*drand48(), drand48()*drand48(), drand48()*drand48()))))
                 } else if chooseMat < 0.95 { // metal
-                    list.append(Sphere(center: center, radius: 0.2, material: Metal(albedo: Vector(0.5*(1 + drand48()), 0.5*(1 + drand48()), 0.5*(1 + drand48())), fuzz: 0.5*drand48())))
+                    list.append(sphere(center: center, radius: 0.2, material: Metal(albedo: Vector(0.5*(1 + drand48()), 0.5*(1 + drand48()), 0.5*(1 + drand48())), fuzz: 0.5*drand48())))
                 } else { // glass
-                    list.append(Sphere(center: center, radius: 0.2, material: Dielectric(refractionIndex: 1.5)))
+                    list.append(sphere(center: center, radius: 0.2, material: Dielectric(refractionIndex: 1.5)))
                 }
             }
         }
     }
 
-    list.append(Sphere(center: Vector(0,1,0), radius: 1.0, material: Dielectric(refractionIndex: 1.5)))
-    list.append(Sphere(center: Vector(-4,1,0), radius: 1.0, material: Lambertian(albedo: Vector(0.4,0.2,0.1))))
-    list.append(Sphere(center: Vector(4,1,0), radius: 1.0, material: Metal(albedo: Vector(0.7, 0.6, 0.5), fuzz: 0.0)))
-    return HittableArray(list)
+    list.append(sphere(center: Vector(0,1,0), radius: 1.0, material: Dielectric(refractionIndex: 1.5)))
+    list.append(sphere(center: Vector(-4,1,0), radius: 1.0, material: Lambertian(albedo: Vector(0.4,0.2,0.1))))
+    list.append(sphere(center: Vector(4,1,0), radius: 1.0, material: Metal(albedo: Vector(0.7, 0.6, 0.5), fuzz: 0.0)))
+    return hittableArray(list)
 }
 
 srand48(0)
