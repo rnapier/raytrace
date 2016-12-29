@@ -134,14 +134,8 @@ extension Vector: CustomStringConvertible {
 struct Ray {
     let origin: Vector
     let direction: Vector
-    init(origin: Vector, direction: Vector) {
-        self.origin = origin
-        self.direction = direction
-    }
-    init(origin: Vector, through: Vector) {
-        self.origin = origin
-        self.direction = through - origin
-    }
+    let time: Double
+
     func point(atParameter t: Double) -> Vector {
         return origin + t * direction
     }
@@ -183,23 +177,26 @@ struct Hit {
     var material: Material
 }
 
-struct Hittable {
-    let hitFunction: (Ray, Range<Double>) -> Hit?
-    func hit(for ray: Ray, in range: Range<Double>) -> Hit? { return hitFunction(ray, range) }
+protocol Hittable {
+    func hit(for ray: Ray, in range: Range<Double>) -> Hit?
+    func boundingBox(overTimes times: Range<Double>) -> AABB?
 }
 
-func sphere<M: Material>(center: Vector, radius: Double, material: M) ->  Hittable {
-    return Hittable(
-        hitFunction: { (ray: Ray, range: Range<Double>) -> Hit? in
+struct Sphere<M: Material>: Hittable {
+    let center: Vector
+    let radius: Double
+    let material: M
+
+    func hit(for ray: Ray, in range: Range<Double>) -> Hit? {
 
         func hitRecord(for t: Double) -> Hit? {
             // Do not include ends of range
             guard t > range.lowerBound && t < range.upperBound else { return nil }
             let point = ray.point(atParameter: t)
             return Hit(t: t,
-                             p: point,
-                             normal: (point - center) / radius,
-                             material: material)
+                       p: point,
+                       normal: (point - center) / radius,
+                       material: material)
         }
 
         let oc = ray.origin - center
@@ -214,26 +211,163 @@ func sphere<M: Material>(center: Vector, radius: Double, material: M) ->  Hittab
         }
 
         return nil
-    })
+    }
+
+    func boundingBox(overTimes times: Range<Double>) -> AABB? {
+        return AABB(minCorner: center - Vector(radius, radius, radius),
+                    maxCorner: center + Vector(radius, radius, radius))
+    }
 }
 
-func hittableArray(_ elements: [Hittable]) -> Hittable {
-    return Hittable(
-        hitFunction: { (ray: Ray, range: Range<Double>) -> Hit? in
-            var closestHit: Hit? = nil
-            var maxT = range.upperBound
-            for element in elements {
-                if let hit = element.hit(for: ray, in: range.lowerBound..<maxT) {
-                    closestHit = hit
-                    maxT = hit.t
-                }
+struct MovingSphere<M: Material>: Hittable {
+    let startCenter: Vector
+    let endCenter: Vector
+    let startTime: Double
+    let endTime: Double
+    let radius: Double
+    let material: M
+
+    func center(at time: Double) -> Vector {
+        return startCenter + ((time - startTime) / (endTime - startTime))*(endCenter - startCenter)
+    }
+
+    func hit(for ray: Ray, in range: Range<Double>) -> Hit? {
+        func hit(for t: Double) -> Hit? {
+            // Do not include ends of range
+            guard t > range.lowerBound && t < range.upperBound else { return nil }
+            let point = ray.point(atParameter: t)
+            return Hit(t: t,
+                       p: point,
+                       normal: (point - center(at: ray.time)) / radius,
+                       material: material)
+        }
+
+        let oc = ray.origin - center(at: ray.time)
+        let a = ray.direction ⋅ ray.direction
+        let b = oc ⋅ ray.direction
+        let c = oc ⋅ oc - radius * radius
+        let discriminant = b * b - a * c
+
+        if discriminant > 0 {
+            let s = sqrt(discriminant)
+            return hit(for: (-b - s)/a) ?? hit(for: (-b + s)/a)
+        }
+
+        return nil
+    }
+
+    func boundingBox(overTimes times: Range<Double>) -> AABB? {
+        return AABB(minCorner: center(at: times.lowerBound) - Vector(radius, radius, radius),
+                    maxCorner: center(at: times.lowerBound) + Vector(radius, radius, radius)) +
+            AABB(minCorner: center(at: times.upperBound) - Vector(radius, radius, radius),
+                 maxCorner: center(at: times.upperBound) + Vector(radius, radius, radius))
+    }
+}
+
+//struct HittableArray: Hittable {
+//
+//    let elements: [Hittable]
+//    init(_ elements: [Hittable]) { self.elements = elements }
+//
+//    func hit(for ray: Ray, in range: Range<Double>) -> Hit? {
+//        var closestHit: Hit? = nil
+//        var maxT = range.upperBound
+//        for element in elements {
+//            if let hit = element.hit(for: ray, in: range.lowerBound..<maxT) {
+//                closestHit = hit
+//                maxT = hit.t
+//            }
+//        }
+//        return closestHit
+//    }
+//    func boundingBox(overTimes times: Range<Double>) -> AABB? {
+//        return elements.reduce(nil) { (box, e) in
+//            guard let box = box else { return e.boundingBox(overTimes: times) }
+//            guard let eBox = e.boundingBox(overTimes: times) else { return box }
+//            return box + eBox
+//        }
+//    }
+//}
+
+struct BVH: Hittable {
+    let left: Hittable // FIXME: Is duplicating here really better than optional?
+    let right: Hittable
+
+    let box: AABB
+
+    // FIXME: This crashes the compiler
+//    init<C: Collection>(_ elements: C, timeRange: Range<Double>) where C.Iterator.Element == Hittable, C.IndexDistance == Int {
+    init(_ elements: [Hittable], timeRange: Range<Double>) {
+//        let axis = Int(drand48() * 3) // FIXME: This is all pretty ugly
+        // Note: 0..<1 is arbitrary; may want to add boundBox(at:) to protocol
+        // FIXME: This should fail more gracefully if things don't have a bounding box and need fewer !
+
+        let count = elements.count
+
+        if count == 1 {
+            left = elements[0]
+            right = elements[0]
+        } else if count == 2 {
+            left = elements[0]
+            right = elements[1]
+        } else {
+
+            func volumeDifference(list: [Hittable]) -> Double {
+                let pivot = count / 2
+                let left = list.prefix(upTo: pivot).map({ $0.boundingBox(overTimes: timeRange)!.volume }).reduce(0, +)
+                let right = list.suffix(from: pivot).map({ $0.boundingBox(overTimes: timeRange)!.volume }).reduce(0, +)
+                return abs(right - left)
             }
-            return closestHit
-    })
+
+            let xSorted = elements.sorted { (lhs, rhs) in
+                lhs.boundingBox(overTimes: 0..<1)!.minCorner.x < rhs.boundingBox(overTimes: timeRange)!.minCorner.x
+            }
+
+            let ySorted = elements.sorted { (lhs, rhs) in
+                lhs.boundingBox(overTimes: 0..<1)!.minCorner.y < rhs.boundingBox(overTimes: timeRange)!.minCorner.y
+            }
+
+            let zSorted = elements.sorted { (lhs, rhs) in
+                lhs.boundingBox(overTimes: 0..<1)!.minCorner.z < rhs.boundingBox(overTimes: timeRange)!.minCorner.z
+            }
+
+            let sortedElements = [xSorted, ySorted, zSorted].map({ ($0, volumeDifference(list: $0)) }).min(by: { $0.1 < $1.1 }).map { $0.0 }!
+
+
+            let pivot = count / 2
+            left = BVH(Array(sortedElements.prefix(upTo: pivot)), timeRange: timeRange)
+            right = BVH(Array(sortedElements.suffix(from: pivot)), timeRange: timeRange)
+        }
+
+        let leftBox = left.boundingBox(overTimes: timeRange)!
+        let rightBox = right.boundingBox(overTimes: timeRange)!
+
+//        errPrint(abs(leftBox.volume - rightBox.volume))
+        box = leftBox + rightBox
+    }
+
+    func hit(for ray: Ray, in range: Range<Double>) -> Hit? {
+        guard box.isHit(by: ray, inRange: range) else { return nil }
+
+        let leftHit = left.hit(for: ray, in: range)
+        let rightHit = right.hit(for: ray, in: range)
+        if let leftHit = leftHit, let rightHit = rightHit {
+            if leftHit.t < rightHit.t { return leftHit } else { return rightHit }
+        }
+
+        if let leftHit = leftHit { return leftHit }
+        if let rightHit = rightHit { return rightHit }
+        return nil
+    }
+
+    func boundingBox(overTimes times: Range<Double>) -> AABB? {
+        return box
+    }
 }
 
 struct Camera {
-    init(lookFrom: Vector, lookAt: Vector, vup: Vector, vfov: Double, aspect: Double, aperture: Double, focusDist: Double) {
+    init(lookFrom: Vector, lookAt: Vector, vup: Vector, vfov: Double, aspect: Double, aperture: Double, focusDist: Double, overTimes: Range<Double> ) {
+        timeRange = overTimes
         lensRadius = aperture / 2
         let theta = vfov*M_PI/180
         let halfHeight = tan(theta/2)
@@ -251,12 +385,16 @@ struct Camera {
     let vertical: Vector
     let origin: Vector
     let u, v, w: Vector
+    let timeRange: Range<Double>
     let lensRadius: Double
 
     func ray(atPlaneX x: Double, planeY y: Double) -> Ray {
         let rd = lensRadius*Vector.randomInUnitDisk()
         let offset = u * rd.x + v * rd.y
-        return Ray(origin: origin + offset, direction: lowerLeftCorner + x * horizontal + y * vertical - origin - offset)
+        let time = timeRange.lowerBound + drand48()*(timeRange.upperBound - timeRange.lowerBound)
+        return Ray(origin: origin + offset,
+                   direction: lowerLeftCorner + x * horizontal + y * vertical - origin - offset,
+                   time: time)
     }
 }
 
@@ -273,7 +411,7 @@ struct Lambertian: Material {
     let albedo: Vector
     func scatter(ray: Ray, hitRecord rec: Hit) -> ScatterResult? {
         let target = rec.p + rec.normal + Vector.randomInUnitSphere()
-        return ScatterResult(scattered: Ray(origin: rec.p, direction: target - rec.p),
+        return ScatterResult(scattered: Ray(origin: rec.p, direction: target - rec.p, time: ray.time),
                              attenuation: albedo)
     }
 }
@@ -287,7 +425,7 @@ struct Metal: Material {
     }
     func scatter(ray: Ray, hitRecord rec: Hit) -> ScatterResult? {
         let reflected = ray.direction.unit.reflect(acrossNormal: rec.normal)
-        let scattered = Ray(origin: rec.p, direction: reflected + fuzz*Vector.randomInUnitSphere())
+        let scattered = Ray(origin: rec.p, direction: reflected + fuzz*Vector.randomInUnitSphere(), time: ray.time)
         guard scattered.direction ⋅ rec.normal > 0 else { return nil }
         return ScatterResult(scattered: scattered, attenuation: albedo)
     }
@@ -320,9 +458,9 @@ struct Dielectric: Material {
         }
 
         if drand48() < reflectProb {
-            return ScatterResult(scattered: Ray(origin: rec.p, direction: reflected), attenuation: attenuation)
+            return ScatterResult(scattered: Ray(origin: rec.p, direction: reflected, time: ray.time), attenuation: attenuation)
         } else {
-            return ScatterResult(scattered: Ray(origin: rec.p, direction: refracted!), attenuation: attenuation)
+            return ScatterResult(scattered: Ray(origin: rec.p, direction: refracted!, time: ray.time), attenuation: attenuation)
         }
 //        if let refracted = ray.direction.refract(acrossNormal: outwardNormal, withRefractiveIndex: ni_over_nt),
 //            drand48() >= schlick(cosine: cosine, ri: refractionIndex) {
@@ -333,8 +471,44 @@ struct Dielectric: Material {
     }
 }
 
+struct AABB {
+    let minCorner: Vector
+    let maxCorner: Vector
+
+    func isHit(by ray: Ray, inRange times: Range<Double>) -> Bool {
+        func testDimension(minCorner: Double, maxCorner: Double, origin: Double, direction: Double) -> Bool {
+
+            let t0 = min((minCorner - origin) / direction,
+                         (maxCorner - origin) / direction)
+            let t1 = max((minCorner - origin) / direction,
+                         (maxCorner - origin) / direction)
+            let tmin = max(t0, times.lowerBound)
+            let tmax = min(t1, times.upperBound)
+            return tmax > tmin
+        }
+
+        return testDimension(minCorner: minCorner.x, maxCorner: maxCorner.x, origin: ray.origin.x, direction: ray.direction.x) &&
+            testDimension(minCorner: minCorner.y, maxCorner: maxCorner.y, origin: ray.origin.y, direction: ray.direction.y) &&
+            testDimension(minCorner: minCorner.z, maxCorner: maxCorner.z, origin: ray.origin.z, direction: ray.direction.z)
+    }
+
+    static func +(lhs: AABB, rhs: AABB) -> AABB {
+        let small = Vector(min(lhs.minCorner.x, rhs.minCorner.x),
+                           min(lhs.minCorner.y, rhs.minCorner.y),
+                           min(lhs.minCorner.z, rhs.minCorner.z))
+        let big = Vector(max(lhs.maxCorner.x, rhs.maxCorner.x),
+                         max(lhs.maxCorner.y, rhs.maxCorner.y),
+                         max(lhs.maxCorner.z, rhs.maxCorner.z))
+        return AABB(minCorner: small, maxCorner: big)
+    }
+
+    var volume: Double {
+        return abs((maxCorner.x - minCorner.y) * (maxCorner.y - minCorner.y) * (maxCorner.z - minCorner.z))
+    }
+}
+
 func randomScene() -> Hittable {
-    var list = [sphere(center: Vector(0,-1000,0), radius: 1000, material: Lambertian(albedo: Vector(0.5,0.5,0.5)))]
+    var list: [Hittable] = [Sphere(center: Vector(0,-1000,0), radius: 1000, material: Lambertian(albedo: Vector(0.5,0.5,0.5)))]
 
     for a in -11..<11 {
         for b in -11..<11 {
@@ -342,20 +516,20 @@ func randomScene() -> Hittable {
             let center = Vector(Double(a)+0.9*drand48(),0.2,Double(b)+0.9*drand48());
             if (center-Vector(4,0.2,0)).length > 0.9 {
                 if (chooseMat < 0.8) { // diffuse
-                    list.append(sphere(center: center, radius: 0.2, material: Lambertian(albedo: Vector(drand48()*drand48(), drand48()*drand48(), drand48()*drand48()))))
+                    list.append(MovingSphere(startCenter: center, endCenter: center+Vector(0,0.5*drand48(), 0), startTime: 0, endTime: 1, radius: 0.2, material: Lambertian(albedo: Vector(drand48()*drand48(), drand48()*drand48(), drand48()*drand48()))))
                 } else if chooseMat < 0.95 { // metal
-                    list.append(sphere(center: center, radius: 0.2, material: Metal(albedo: Vector(0.5*(1 + drand48()), 0.5*(1 + drand48()), 0.5*(1 + drand48())), fuzz: 0.5*drand48())))
+                    list.append(Sphere(center: center, radius: 0.2, material: Metal(albedo: Vector(0.5*(1 + drand48()), 0.5*(1 + drand48()), 0.5*(1 + drand48())), fuzz: 0.5*drand48())))
                 } else { // glass
-                    list.append(sphere(center: center, radius: 0.2, material: Dielectric(refractionIndex: 1.5)))
+                    list.append(Sphere(center: center, radius: 0.2, material: Dielectric(refractionIndex: 1.5)))
                 }
             }
         }
     }
 
-    list.append(sphere(center: Vector(0,1,0), radius: 1.0, material: Dielectric(refractionIndex: 1.5)))
-    list.append(sphere(center: Vector(-4,1,0), radius: 1.0, material: Lambertian(albedo: Vector(0.4,0.2,0.1))))
-    list.append(sphere(center: Vector(4,1,0), radius: 1.0, material: Metal(albedo: Vector(0.7, 0.6, 0.5), fuzz: 0.0)))
-    return hittableArray(list)
+    list.append(Sphere(center: Vector(0,1,0), radius: 1.0, material: Dielectric(refractionIndex: 1.5)))
+    list.append(Sphere(center: Vector(-4,1,0), radius: 1.0, material: Lambertian(albedo: Vector(0.4,0.2,0.1))))
+    list.append(Sphere(center: Vector(4,1,0), radius: 1.0, material: Metal(albedo: Vector(0.7, 0.6, 0.5), fuzz: 0.0)))
+    return BVH(list, timeRange: 0..<1)
 }
 
 srand48(0)
@@ -368,12 +542,11 @@ print("P3\n\(nx) \(ny)\n255")
 
 let world = randomScene()
 
-let lookFrom = Vector(16,2,4)
-let lookAt = Vector(0,0.5,0)
-let focalPoint = Vector(4,1,0)
-let distToFocus = (lookFrom - focalPoint).length
-let aperture = 1.0/16.0
-let camera = Camera(lookFrom: lookFrom, lookAt: lookAt, vup: Vector(0,1,0), vfov: 15, aspect: Double(nx)/Double(ny), aperture: aperture, focusDist: distToFocus)
+let lookFrom = Vector(13,2,3)
+let lookAt = Vector(0,0,0)
+let distToFocus = 10.0
+let aperture = 0.0
+let camera = Camera(lookFrom: lookFrom, lookAt: lookAt, vup: Vector(0,1,0), vfov: 20, aspect: Double(nx)/Double(ny), aperture: aperture, focusDist: distToFocus, overTimes: 0..<1)
 
 for j in (0..<ny).reversed() {
     for i in 0..<nx {
