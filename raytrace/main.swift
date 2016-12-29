@@ -72,6 +72,11 @@ struct Vector {
     static func +(lhs: Vector, rhs: Vector) -> Vector {
         return Vector(lhs.x + rhs.x, lhs.y + rhs.y, lhs.z + rhs.z)
     }
+
+    static func +=(lhs: inout Vector, rhs: Vector) {
+        lhs = Vector(lhs.x + rhs.x, lhs.y + rhs.y, lhs.z + rhs.z)
+    }
+
     static func -(lhs: Vector, rhs: Vector) -> Vector {
         return Vector(lhs.x - rhs.x, lhs.y - rhs.y, lhs.z - rhs.z)
     }
@@ -182,10 +187,16 @@ protocol Hittable {
     func hitRecord(for ray: Ray, in: Range<Double>) -> HitRecord?
 }
 
-struct Sphere: Hittable {
+struct Sphere<M: Material>: Hittable {
     let center: Vector
     let radius: Double
-    let material: Material
+    let material: M
+
+    init(center: Vector, radius: Double, material: M) {
+        self.center = center
+        self.radius = radius
+        self.material = material
+    }
 
     func hitRecord(for ray: Ray, in range: Range<Double>) -> HitRecord? {
 
@@ -220,11 +231,15 @@ struct HittableArray: Hittable {
     init(_ elements: [Hittable]) { self.elements = elements }
 
     func hitRecord(for ray: Ray, in range: Range<Double>) -> HitRecord? {
-        return elements.reduce(nil) { (previousHit, hittable) in
-            let maxT = previousHit?.t ?? range.upperBound
-            let hit = hittable.hitRecord(for: ray, in: range.lowerBound..<maxT)
-            return hit ?? previousHit
+        var closestHit: HitRecord? = nil
+        var maxT = range.upperBound
+        for element in elements {
+            if let hit = element.hitRecord(for: ray, in: range.lowerBound..<maxT) {
+                closestHit = hit
+                maxT = hit.t
+            }
         }
+        return closestHit
     }
 }
 
@@ -330,7 +345,7 @@ struct Dielectric: Material {
 }
 
 func randomScene() -> HittableArray {
-    var list = [Sphere(center: Vector(0,-1000,0), radius: 1000, material: Lambertian(albedo: Vector(0.5,0.5,0.5)))]
+    var list: [Hittable] = [Sphere(center: Vector(0,-1000,0), radius: 1000, material: Lambertian(albedo: Vector(0.5,0.5,0.5)))]
 
     for a in -11..<11 {
         for b in -11..<11 {
@@ -373,14 +388,14 @@ let camera = Camera(lookFrom: lookFrom, lookAt: lookAt, vup: Vector(0,1,0), vfov
 
 for j in (0..<ny).reversed() {
     for i in 0..<nx {
-        var col = (0..<ns).reduce(Vector.zero) { (c, s) in
+        var col = Vector.zero
+        for _ in 0..<ns {
             let u = (Double(i) + drand48()) / Double(nx)
             let v = (Double(j) + drand48()) / Double(ny)
             let r = camera.ray(atPlaneX: u, planeY: v)
-            return c + r.color(in: world)
-            }
-        col = col / Double(ns)
-        col = Vector(sqrt(col.x), sqrt(col.y), sqrt(col.z))
+            col += r.color(in: world)
+        }
+        col = Vector(sqrt(col.x / Double(ns)), sqrt(col.y / Double(ns)), sqrt(col.z / Double(ns)))
 
         let ir = Int(255.99 * col.r)
         let ig = Int(255.99 * col.g)

@@ -1,1 +1,1 @@
-time swift -O main.swift > out.ppm && open out.ppm
+date && time swift -O main.swift > out.ppm && open out.ppm
